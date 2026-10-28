@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- Secure CSP required by VS Code Webviews -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{{nonce}}';">
+    <style>
+        body { padding: 20px; font-family: var(--vscode-font-family); color: var(--vscode-foreground); }
+        .dim-select { margin-right: 10px; padding: 5px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); }
+        #slider-container { margin-top: 20px; display: none; }
+        canvas { margin-top: 20px; border: 1px solid var(--vscode-panel-border); background: #000; max-width: 100%; }
+    </style>
+</head>
+<body>
+    <h2 id="shape-display">Loading array...</h2>
+    <div id="controls"></div>
+    
+    <div id="slider-container">
+        <label id="depth-label">Depth: 0</label><br/>
+        <input type="range" id="depth-slider" min="0" max="10" value="0" style="width: 300px;">
+    </div>
+
+    <canvas id="render-canvas"></canvas>
+
+    <!-- Dynamic script injection via TypeScript -->
+    <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
+</body>
+</html>
