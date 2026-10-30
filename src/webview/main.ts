@@ -3,6 +3,7 @@ import {
     AUTO_ID, autoColormap, buildMapper, Colormap, ColorMapper, findLabels, PRESETS, Preferences, sanitizePreferences,
 } from './colormap';
 import { createColormapEditor } from './colormapEditor';
+import { setupDonate } from './donate';
 import { loadNpy } from './loader';
 import { dtypeName, NpyArray } from './npy';
 import {
@@ -128,6 +129,7 @@ interpolationSelect.addEventListener('change', () => {
 });
 
 renderColormapOptions();
+setupDonate();
 vscode.postMessage({ command: 'ready' });
 
 async function load(uri: string, warning?: string) {

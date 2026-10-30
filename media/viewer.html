@@ -80,7 +80,16 @@
         <span id="status-value">--</span>
         <span id="status-swatch" class="swatch" title="Displayed colour" hidden><span id="swatch-color"></span></span>
         <span class="status-hint">Hold <kbd>Ctrl</kbd>: drag to pan, scroll to zoom</span>
+        <button id="donate-button" class="donate-button" title="Support DebugSlicer" aria-label="Support DebugSlicer" hidden>♥</button>
     </footer>
+
+    <aside id="donate-pane" class="donate-pane" aria-label="Support DebugSlicer" hidden>
+        <p id="donate-message"></p>
+        <div class="donate-actions">
+            <a id="donate-link" class="text-btn primary">Donate with PayPal</a>
+            <button id="donate-close" class="text-btn">Close</button>
+        </div>
+    </aside>
 
     <div id="toast" class="toast" role="status" hidden></div>
 

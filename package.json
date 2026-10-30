@@ -2,17 +2,31 @@
   "name": "debugslicer-python",
   "displayName": "DebugSlicer Python",
   "description": "Python debugger extension for inspecting the images and volumes in your processing steps. Instantly view 2D images and slice through 3D voxel volumes directly during runtime. Native support for NumPy arrays, PyTorch tensors, and PIL images means you spend less time writing temporary matplotlib plots and more time solving actual problems.",
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/CH4LLENG3R/debugslicer-python.git"
   },
+  "publisher": "CH4LLENG3R",
   "engines": {
     "vscode": "^1.140.0"
   },
   "categories": [
-    "Other"
+    "Debuggers",
+    "Visualization"
   ],
+  "keywords": [
+    "python",
+    "debug",
+    "numpy",
+    "pytorch",
+    "image",
+    "volume",
+    "mri",
+    "ct"
+  ],
+  "icon": "./docs/DebugSlicer_icon.png",
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
