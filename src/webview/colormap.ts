@@ -1,4 +1,4 @@
-import { NumericArray } from './npy';
+import { ArrayData, asChunked } from './npy';
 
 export type ColormapKind = 'continuous' | 'step';
 
@@ -92,7 +92,7 @@ export function isHexColor(text: string): boolean {
 }
 
 // The sorted distinct values if the data looks like labels: finite whole numbers, and not too many of them.
-export function findLabels(data: NumericArray, min: number, max: number, limit = MAX_LABELS): number[] | undefined {
+export function findLabels(data: ArrayData, min: number, max: number, limit = MAX_LABELS): number[] | undefined {
     if (!Number.isFinite(min)) {
         return [];
     }
@@ -102,26 +102,28 @@ export function findLabels(data: NumericArray, min: number, max: number, limit =
     const seen = new Set<number>();
     let count = 0;
 
-    for (let i = 0; i < data.length; i++) {
-        const val = data[i];
-        if (!Number.isFinite(val)) {
-            continue;
-        }
-        if (!Number.isInteger(val)) {
-            return undefined;
-        }
-        if (table) {
-            const slot = val - min;
-            if (table[slot] === 0) {
-                table[slot] = 1;
-                if (++count > limit) {
+    for (const chunk of asChunked(data).chunks) {
+        for (let i = 0; i < chunk.length; i++) {
+            const val = chunk[i];
+            if (!Number.isFinite(val)) {
+                continue;
+            }
+            if (!Number.isInteger(val)) {
+                return undefined;
+            }
+            if (table) {
+                const slot = val - min;
+                if (table[slot] === 0) {
+                    table[slot] = 1;
+                    if (++count > limit) {
+                        return undefined;
+                    }
+                }
+            } else {
+                seen.add(val);
+                if (seen.size > limit) {
                     return undefined;
                 }
-            }
-        } else {
-            seen.add(val);
-            if (seen.size > limit) {
-                return undefined;
             }
         }
     }

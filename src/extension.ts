@@ -59,12 +59,15 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 async function saveVariable(session: vscode.DebugSession, varName: string, npyPath: string, frameId: number | undefined, reduce: boolean): Promise<SavedTypes> {
-    const response = await session.customRequest('evaluate', {
-        expression: buildSaveExpression(varName, npyPath, reduce),
-        context: 'repl',
-        frameId
+    // Large arrays take a while to write, and no tab is open yet to show that something is happening.
+    return vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: `DebugSlicer: reading ${varName}` }, async () => {
+        const response = await session.customRequest('evaluate', {
+            expression: buildSaveExpression(varName, npyPath, reduce),
+            context: 'repl',
+            frameId
+        });
+        return parseSaveResult(response.result);
     });
-    return parseSaveResult(response.result);
 }
 
 // Uses the frame selected in the UI, falling back to the top frame of the first thread that has one.

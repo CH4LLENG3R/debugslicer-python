@@ -1,6 +1,6 @@
 # DebugSlicer roadmap
 
-Status: Sprints 1 to 4 are done. Sprint 5 is next.
+Status: Sprints 1 to 4 and large array loading are done. Sprint 5 is next.
 
 ## Product direction
 
@@ -27,6 +27,8 @@ DebugSlicer is a utility for debugging processing steps by looking at the arrays
 | F9 | One tab per variable, reusing the previous tab when the same variable is reopened in a later debug run | 1 | ✅ Done |
 | F10 | Ctrl + drag pans, plain drag moves the crosshair, and a checkbox shows or hides the crosshair | 3 | ✅ Done |
 | F11 | On-screen information that Ctrl pans and zooms | 4 | ✅ Done |
+| F12 | Load arrays over 2 GB in pieces, with a progress bar | - | ✅ Done |
+| F13 | View MONAI `MetaTensor` variables | - | ✅ Done |
 | X1 | Fix the visual appearance of the view | 2 | ✅ Done |
 | X2 | Fix colour rendering for the channel dimension, with a gray checkerboard behind alpha | 2 | ✅ Done |
 | X3 | Show "View with DebugSlicer" only for accepted types | 1 | ✅ Done |
@@ -65,11 +67,17 @@ DebugSlicer is a utility for debugging processing steps by looking at the arrays
 - The status bar shows that Ctrl pans and zooms, and scrolling without Ctrl says so too.
 - Wrote the README, with usage instructions and screenshots.
 
+### ✅ Large arrays and MONAI
+
+- Measured the limits in a real webview: one buffer can't reach 2 GB, and one tab holds about 15.5 GB in total, regardless of free RAM.
+- Arrays are read in pieces of up to 512 MB into a `ChunkedArray`, with a progress bar. The smaller-type fallback remains for arrays over the total limit.
+- MONAI `MetaTensor` joined the supported types.
+
 ### Sprint 5: open from the Explorer (S)
 
 - **F7:** register a custom read-only editor for `.npy`, `.nii` and `.nii.gz`, reusing the existing viewer.
 - Add a small NIfTI reader, decompressing with the browser's `DecompressionStream`, with no scan metadata applied.
-- There's no debuggee to re-save a smaller type, so a file too large to load gets a clear error.
+- There's no debuggee to re-save a smaller type, so a file over the limit of a tab gets a clear error.
 
 **Done when:** double-clicking `test_project/mri.nii.gz` opens it with no debug session running.
 
@@ -93,4 +101,4 @@ Not requested, and not scheduled:
 - Manual value range or window/level control.
 - A colour bar or label legend next to the views.
 - A button to refresh a tab with the variable's current value after stepping.
-- Loading slices on demand for very large arrays.
+- Loading slices on demand for arrays over the 15 GB limit of a tab.

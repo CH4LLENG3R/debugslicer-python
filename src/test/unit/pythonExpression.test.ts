@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import { buildSaveExpression, parseSaveResult, SUPPORTED_TYPE_PATTERN } from '../../pythonExpression';
 
 test('accepts array and image types only', () => {
-    for (const type of ['ndarray', 'Tensor', 'Parameter', 'Image', 'PngImageFile', 'JpegImageFile']) {
+    for (const type of ['ndarray', 'Tensor', 'Parameter', 'MetaTensor', 'Image', 'PngImageFile', 'JpegImageFile']) {
         assert.ok(SUPPORTED_TYPE_PATTERN.test(type), type);
     }
     for (const type of ['', 'str', 'list', 'Nifti1Image', 'ImageDraw', 'TensorDataset']) {

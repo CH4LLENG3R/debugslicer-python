@@ -31,6 +31,7 @@ The menu item appears for these types:
 |---|---|
 | NumPy | `ndarray` |
 | PyTorch | `Tensor`, `Parameter` (moved to the CPU and detached for you) |
+| MONAI | `MetaTensor` (handled like a PyTorch tensor) |
 | Pillow | `Image`, and file-based images such as `PngImageFile` |
 
 Each variable gets its own tab, named after it. If you reopen the same variable later, even in a new debug run, it returns to its existing tab with the new data and keeps your axis settings when the shape hasn't changed.
@@ -123,7 +124,9 @@ The camera button above a view copies it to the clipboard as an image, exactly a
 
 ## Large arrays
 
-Arrays are loaded completely into memory. If one is too large to load, DebugSlicer asks the debugger to save it again at a smaller type, for example `float64` as `float32`, and shows a warning in the tab saying what changed.
+Large scans load in pieces, with a progress bar showing how much has arrived. As a guide, a 6 GB array took about 18 seconds in testing.
+
+An array is held in memory completely while its tab is open, and one tab can hold about 15 GB, however much RAM your machine has. If an array doesn't fit, DebugSlicer asks the debugger to save it again at a smaller type, for example `float64` as `float32`, and shows a warning in the tab saying what changed. That roughly doubles what fits for 64-bit data. `int16` and other narrower types can't be reduced, so an array that is still too large shows an error.
 
 ## Limitations
 

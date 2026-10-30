@@ -13,6 +13,10 @@
         <h1 id="shape-display">Loading array...</h1>
     </header>
     <div id="warning" class="notice" role="status" hidden></div>
+    <div id="load-progress" class="load-progress" role="status" hidden>
+        <progress id="load-progress-bar" max="1"></progress>
+        <span id="load-progress-label" class="mono"></span>
+    </div>
 
     <!-- One column per dimension is added here: its size, its role and the index it is held at -->
     <section class="dims" aria-label="Dimensions">

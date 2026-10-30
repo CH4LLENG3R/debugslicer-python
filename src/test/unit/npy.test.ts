@@ -1,17 +1,7 @@
 import * as assert from 'assert';
 import { test } from 'node:test';
-import { computeStrides, NpyFormatError, parseNpy } from '../../webview/npy';
-
-// Builds a version 1 .npy file, padding the header to 64 bytes as NumPy does.
-function npy(descr: string, shape: string, payload: ArrayBufferView, fortran = false): ArrayBuffer {
-    let header = `{'descr': '${descr}', 'fortran_order': ${fortran ? 'True' : 'False'}, 'shape': ${shape}, }`;
-    header = header.padEnd(64 * Math.ceil((header.length + 11) / 64) - 11) + '\n';
-    const bytes = new Uint8Array(10 + header.length + payload.byteLength);
-    bytes.set([0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59, 1, 0, header.length & 0xff, header.length >> 8]);
-    bytes.set(new TextEncoder().encode(header), 10);
-    bytes.set(new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength), 10 + header.length);
-    return bytes.buffer;
-}
+import { asChunked, ChunkedArray, computeStrides, NpyFormatError, parseNpy } from '../../webview/npy';
+import { npy } from './npyFile';
 
 test('computes C and Fortran strides', () => {
     assert.deepStrictEqual(computeStrides([2, 3, 4], false), [12, 4, 1]);
@@ -62,4 +52,23 @@ test('rejects what it cannot show with a format error', () => {
     assert.throws(() => parseNpy(npy('<c16', '(1,)', new Float64Array(2))), NpyFormatError);
     assert.throws(() => parseNpy(npy('|O', '(1,)', new Uint8Array(8))), NpyFormatError);
     assert.throws(() => parseNpy(npy('<f8', '(5,)', new Float64Array(2))), NpyFormatError);
+});
+
+test('finds elements across chunks', () => {
+    const data = new ChunkedArray([new Float64Array([0, 1, 2]), new Float64Array([3, 4, 5]), new Float64Array([6])], 3, 7);
+    assert.deepStrictEqual(Array.from({ length: 7 }, (_, i) => data.at(i)), [0, 1, 2, 3, 4, 5, 6]);
+    assert.deepStrictEqual(Array.from(data), [0, 1, 2, 3, 4, 5, 6]);
+});
+
+test('finds elements beyond the 32-bit range', () => {
+    // Only the last chunk holds anything, as if the chunks before it were full.
+    const size = 2 ** 30;
+    const chunks = [new Uint8Array(0), new Uint8Array(0), new Uint8Array(0), new Uint8Array(0), new Uint8Array([9, 8])];
+    const data = new ChunkedArray(chunks, size, 4 * size + 2);
+    assert.strictEqual(data.at(4 * size + 1), 8);
+});
+
+test('wraps a plain array as one chunk, even when it is empty', () => {
+    assert.strictEqual(asChunked(new Uint8Array([5, 6])).at(1), 6);
+    assert.strictEqual(asChunked(new Uint8Array(0)).length, 0);
 });

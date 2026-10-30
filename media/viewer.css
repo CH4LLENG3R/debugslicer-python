@@ -46,6 +46,19 @@ h1 {
     border: 1px solid var(--vscode-inputValidation-warningBorder);
 }
 
+.load-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.load-progress progress {
+    flex: 1;
+    max-width: 480px;
+    height: 8px;
+    accent-color: var(--vscode-progressBar-background);
+}
+
 .hint {
     margin: 0;
     opacity: 0.8;
