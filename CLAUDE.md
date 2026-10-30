@@ -51,6 +51,10 @@ Without colour channels, `colormap.ts` turns values into packed pixels through a
 
 If the webview runs out of memory, it posts `loadTooLarge`. The panel then has the debuggee re-save the variable at a smaller type and reloads it with a warning, once only.
 
+## Donate button
+
+The donate button and its pane exist but stay hidden while `DONATE_URL` in `src/webview/donate.ts` is empty. Setting that constant to the PayPal link turns them on.
+
 ## Things to keep in sync
 
 - The supported type list exists both as `SUPPORTED_TYPE_PATTERN` in `src/pythonExpression.ts` and in the menu's `when` clause in `package.json`, because a `when` clause can't import code. A unit test fails if they differ.

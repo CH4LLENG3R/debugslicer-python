@@ -404,6 +404,50 @@ h1 {
     white-space: nowrap;
 }
 
+.donate-button {
+    padding: 0 4px;
+    font: inherit;
+    line-height: 1;
+    color: inherit;
+    background: none;
+    border: none;
+    opacity: 0.6;
+    cursor: pointer;
+}
+
+.donate-button:hover {
+    opacity: 1;
+}
+
+.donate-pane {
+    position: fixed;
+    right: 16px;
+    bottom: 48px;
+    width: min(320px, calc(100% - 32px));
+    padding: 10px 12px;
+    color: var(--vscode-notifications-foreground, var(--vscode-foreground));
+    background: var(--vscode-notifications-background, var(--vscode-editor-background));
+    border: 1px solid var(--vscode-notifications-border, var(--vscode-panel-border));
+    border-radius: var(--radius);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.donate-pane p {
+    margin: 0 0 10px;
+}
+
+.donate-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.donate-actions a {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+}
+
 kbd {
     padding: 0 4px;
     font: inherit;
