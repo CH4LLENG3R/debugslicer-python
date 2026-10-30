@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as path from 'path'; // Add this import
 
 export class DebugSlicerPanel {
     public static currentPanel: DebugSlicerPanel | undefined;
@@ -16,14 +17,20 @@ export class DebugSlicerPanel {
             return;
         }
 
+        // Extract the directory where the NPY file is saved (temp dir)
+        const npyDir = vscode.Uri.file(path.dirname(npyPath));
+
         const panel = vscode.window.createWebviewPanel(
             'debugSlicerViewer',
             'DebugSlicer View',
             column || vscode.ViewColumn.One,
             { 
                 enableScripts: true,
-                // Restrict the webview to only load content from our extension's `media` directory.
-                localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'media')]
+                // Allow webview to load resources from both the media folder AND the temp folder
+                localResourceRoots: [
+                    vscode.Uri.joinPath(extensionUri, 'media'),
+                    npyDir 
+                ]
             }
         );
 
@@ -31,23 +38,12 @@ export class DebugSlicerPanel {
         DebugSlicerPanel.currentPanel.loadNpy(npyPath);
     }
 
+    // ... (Keep constructor and dispose methods exactly the same) ...
     private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
         this._panel = panel;
         this._extensionUri = extensionUri;
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
-        
-        // Build the HTML by loading it from the media folder
         this._panel.webview.html = this._getHtmlForWebview(this._panel.webview);
-    }
-
-    public loadNpy(npyPath: string) {
-        if (fs.existsSync(npyPath)) {
-            const fileData = fs.readFileSync(npyPath);
-            this._panel.webview.postMessage({
-                command: 'loadNpy',
-                bufferData: fileData 
-            });
-        }
     }
 
     public dispose() {
@@ -59,29 +55,33 @@ export class DebugSlicerPanel {
         }
     }
 
+    public loadNpy(npyPath: string) {
+        if (fs.existsSync(npyPath)) {
+            // Convert the local file path into a secure webview URI
+            const fileUri = vscode.Uri.file(npyPath);
+            const webviewUri = this._panel.webview.asWebviewUri(fileUri);
+
+            // Send ONLY the URI string to the webview
+            this._panel.webview.postMessage({
+                command: 'loadNpy',
+                uri: webviewUri.toString() 
+            });
+        }
+    }
+
+    // ... (Keep _getHtmlForWebview exactly the same) ...
     private _getHtmlForWebview(webview: vscode.Webview) {
-        // 1. Get paths to the HTML and JS files
         const htmlPath = vscode.Uri.joinPath(this._extensionUri, 'media', 'viewer.html');
         const scriptPath = vscode.Uri.joinPath(this._extensionUri, 'media', 'viewer.js');
-
-        // 2. Read the raw HTML file from disk
         let html = fs.readFileSync(htmlPath.fsPath, 'utf8');
-
-        // 3. Convert the JS file path to a special URI that VS Code allows in webviews
         const scriptUri = webview.asWebviewUri(scriptPath);
-
-        // 4. Generate a random nonce for the Content Security Policy
         const nonce = getNonce();
-
-        // 5. Inject the URI and Nonce into the HTML string
         html = html.replace('{{scriptUri}}', scriptUri.toString());
         html = html.replace(/{{nonce}}/g, nonce);
-
         return html;
     }
 }
 
-// Helper to generate a random string for Content Security Policy
 function getNonce() {
     let text = '';
     const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';

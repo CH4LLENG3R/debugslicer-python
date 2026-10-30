@@ -18,6 +18,14 @@
 				"${workspaceFolder}/dist/**/*.js"
 			],
 			"preLaunchTask": "${defaultBuildTask}"
-		}
+		},
+		{
+            "name": "Test Project",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/test_project/test.py",
+            "console": "integratedTerminal",
+            "python": "${command:python.interpreterPath}",
+        },
 	]
 }
