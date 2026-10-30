@@ -4,6 +4,12 @@ All notable changes to the "debugslicer-python" extension will be documented in 
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.0]
+
+- Large arrays: arrays over about 2 GB now load, up to about 15 GB per tab.
+- A progress bar while large arrays load, and an indicator in the status bar while the debugger saves them.
+- MONAI `MetaTensor` variables can be viewed.
+
 ## [1.0.0]
 
 First release.

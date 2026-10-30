@@ -8,17 +8,57 @@ export type NumericArray =
     | Int8Array
     | Uint8Array;
 
+// One array stored in several typed arrays. A webview can't allocate a single buffer of about
+// 2 GB or more, however much memory is free, so large arrays have to be split up.
+export class ChunkedArray {
+    public readonly length: number;
+
+    // Every chunk holds chunkLength elements, except that the last may hold fewer.
+    constructor(public readonly chunks: NumericArray[], public readonly chunkLength: number, length: number) {
+        this.length = length;
+    }
+
+    public at(index: number): number {
+        const chunk = index < this.chunkLength ? 0 : Math.floor(index / this.chunkLength);
+        return this.chunks[chunk][index - chunk * this.chunkLength];
+    }
+
+    public *[Symbol.iterator](): IterableIterator<number> {
+        for (const chunk of this.chunks) {
+            yield* chunk;
+        }
+    }
+}
+
+export type ArrayData = ChunkedArray | NumericArray;
+
+export function asChunked(data: ArrayData): ChunkedArray {
+    return data instanceof ChunkedArray ? data : new ChunkedArray([data], Math.max(data.length, 1), data.length);
+}
+
+export interface NpyHeader {
+    shape: number[];
+    strides: number[];
+    dtype: string;
+    dataOffset: number;
+    count: number;
+    elementSize: number;
+}
+
 export interface NpyArray {
     shape: number[];
     strides: number[];
-    data: NumericArray;
+    data: ChunkedArray;
     dtype: string;
 }
 
 // The file is malformed or holds something we can't show, so retrying with a smaller type won't help.
 export class NpyFormatError extends Error {}
 
-export function parseNpy(buffer: ArrayBuffer): NpyArray {
+const SUPPORTED_TYPES = ['f8', 'f4', 'f2', 'i8', 'i4', 'i2', 'i1', 'u8', 'u4', 'u2', 'u1', 'b1'];
+
+// Reads the header from the start of a file, which is all that this buffer needs to hold.
+export function parseNpyHeader(buffer: ArrayBuffer): NpyHeader {
     const magic = [0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59];
     if (buffer.byteLength < 10 || !magic.every((byte, i) => new Uint8Array(buffer)[i] === byte)) {
         throw new NpyFormatError('Not a valid .npy file.');
@@ -28,6 +68,9 @@ export function parseNpy(buffer: ArrayBuffer): NpyArray {
     const major = view.getUint8(6);
     const headerLen = major === 1 ? view.getUint16(8, true) : view.getUint32(8, true);
     const headerOffset = major === 1 ? 10 : 12;
+    if (headerOffset + headerLen > buffer.byteLength) {
+        throw new NpyFormatError('The .npy header is larger than expected.');
+    }
     const header = new TextDecoder().decode(new Uint8Array(buffer, headerOffset, headerLen));
 
     const descr = header.match(/'descr':\s*'([^']+)'/)?.[1];
@@ -38,14 +81,35 @@ export function parseNpy(buffer: ArrayBuffer): NpyArray {
 
     const shape = shapeText.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
     const fortranOrder = /'fortran_order':\s*True/.test(header);
-    const count = shape.reduce((total, dim) => total * dim, 1);
 
     return {
         shape,
         strides: computeStrides(shape, fortranOrder),
-        data: decodeData(buffer, headerOffset + headerLen, count, descr),
         dtype: descr,
+        dataOffset: headerOffset + headerLen,
+        count: shape.reduce((total, dim) => total * dim, 1),
+        elementSize: parseDescr(descr).size,
     };
+}
+
+// Reads a complete file that is held in one buffer.
+export function parseNpy(buffer: ArrayBuffer): NpyArray {
+    const header = parseNpyHeader(buffer);
+    const data = decodeData(buffer, header.dataOffset, header.count, header.dtype);
+    return {
+        shape: header.shape,
+        strides: header.strides,
+        data: asChunked(data),
+        dtype: header.dtype,
+    };
+}
+
+function parseDescr(descr: string) {
+    const match = descr.match(/^([<>|=]?)([a-z])(\d+)$/);
+    if (!match || !SUPPORTED_TYPES.includes(match[2] + match[3])) {
+        throw new NpyFormatError(`Unsupported dtype '${descr}'.`);
+    }
+    return { byteOrder: match[1], type: match[2] + match[3], size: parseInt(match[3]) };
 }
 
 // Readable type name for display, for example '<f8' becomes 'float64'.
@@ -73,18 +137,9 @@ export function computeStrides(shape: number[], fortranOrder: boolean): number[]
     return strides;
 }
 
-function decodeData(buffer: ArrayBuffer, offset: number, count: number, descr: string): NumericArray {
-    const match = descr.match(/^([<>|=]?)([a-z])(\d+)$/);
-    if (!match) {
-        throw new NpyFormatError(`Unsupported dtype '${descr}'.`);
-    }
-    const [, byteOrder, kind, sizeText] = match;
-    const size = parseInt(sizeText);
-    const type = kind + sizeText;
+export function decodeData(buffer: ArrayBuffer, offset: number, count: number, descr: string): NumericArray {
+    const { byteOrder, type, size } = parseDescr(descr);
 
-    if (!['f8', 'f4', 'f2', 'i8', 'i4', 'i2', 'i1', 'u8', 'u4', 'u2', 'u1', 'b1'].includes(type)) {
-        throw new NpyFormatError(`Unsupported dtype '${descr}'.`);
-    }
     if (offset + count * size > buffer.byteLength) {
         throw new NpyFormatError('The .npy file is shorter than its header says.');
     }

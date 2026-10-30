@@ -1,5 +1,5 @@
 import { buildMapper, ColorMapper, GRAY, unpackColor } from './colormap';
-import { NumericArray } from './npy';
+import { ArrayData, asChunked, ChunkedArray } from './npy';
 
 export type AxisRole = 'H' | 'W' | 'D' | 'c' | 'const';
 
@@ -164,7 +164,7 @@ export function sliceLayout(shape: number[], strides: number[], axes: Axis[], pl
 // The value ranges used for display, over the whole array so that every slice and view agree.
 // Grayscale is stretched to its finite min and max. For colour, bytes are taken as 0..255 and
 // floats already within 0..1 as 0..1. Anything else is stretched, with alpha separate from colour.
-export function displayRanges(data: NumericArray, channels: number, stepC: number, isByte: boolean): DisplayRanges {
+export function displayRanges(data: ArrayData, channels: number, stepC: number, isByte: boolean): DisplayRanges {
     const hasAlpha = channels === 2 || channels === 4;
     if (channels > 1 && isByte) {
         return { color: { min: 0, range: 255 }, alpha: hasAlpha ? { min: 0, range: 255 } : undefined };
@@ -174,19 +174,23 @@ export function displayRanges(data: NumericArray, channels: number, stepC: numbe
     let max = -Infinity;
     let alphaMin = Infinity;
     let alphaMax = -Infinity;
-    for (let i = 0; i < data.length; i++) {
-        const val = data[i];
-        if (!Number.isFinite(val)) {
-            continue;
+    const { chunks, chunkLength } = asChunked(data);
+    chunks.forEach((chunk, chunkIndex) => {
+        const offset = chunkIndex * chunkLength;
+        for (let i = 0; i < chunk.length; i++) {
+            const val = chunk[i];
+            if (!Number.isFinite(val)) {
+                continue;
+            }
+            if (hasAlpha && Math.floor((offset + i) / stepC) % channels === channels - 1) {
+                if (val < alphaMin) { alphaMin = val; }
+                if (val > alphaMax) { alphaMax = val; }
+            } else {
+                if (val < min) { min = val; }
+                if (val > max) { max = val; }
+            }
         }
-        if (hasAlpha && Math.floor(i / stepC) % channels === channels - 1) {
-            if (val < alphaMin) { alphaMin = val; }
-            if (val > alphaMax) { alphaMax = val; }
-        } else {
-            if (val < min) { min = val; }
-            if (val > max) { max = val; }
-        }
-    }
+    });
 
     return {
         color: channels > 1 ? colorRange(min, max) : stretchRange(min, max),
@@ -203,14 +207,15 @@ function colorRange(min: number, max: number): ValueRange {
 }
 
 // Without colour channels, the mapper decides each pixel's colour. It defaults to gray.
-export function renderSlice(data: NumericArray, layout: SliceLayout, ranges: DisplayRanges, mapper?: ColorMapper): Uint8ClampedArray {
+export function renderSlice(data: ArrayData, layout: SliceLayout, ranges: DisplayRanges, mapper?: ColorMapper): Uint8ClampedArray {
+    const source = asChunked(data);
     if (layout.channels > 1) {
-        return renderColor(data, layout, ranges);
+        return renderColor(source, layout, ranges);
     }
-    return renderMapped(data, layout, mapper ?? buildMapper(GRAY, ranges.color.min, ranges.color.range));
+    return renderMapped(source, layout, mapper ?? buildMapper(GRAY, ranges.color.min, ranges.color.range));
 }
 
-function renderMapped(data: NumericArray, layout: SliceLayout, mapper: ColorMapper): Uint8ClampedArray {
+function renderMapped(data: ChunkedArray, layout: SliceLayout, mapper: ColorMapper): Uint8ClampedArray {
     const { height, width, base, stepY, stepX } = layout;
     const pixels = new Uint8ClampedArray(height * width * 4);
     const packed = new Uint32Array(pixels.buffer);
@@ -218,7 +223,7 @@ function renderMapped(data: NumericArray, layout: SliceLayout, mapper: ColorMapp
     for (let y = 0; y < height; y++) {
         let index = base + y * stepY;
         for (let x = 0; x < width; x++) {
-            packed[ptr++] = mapper(data[index]);
+            packed[ptr++] = mapper(data.at(index));
             index += stepX;
         }
     }
@@ -226,7 +231,7 @@ function renderMapped(data: NumericArray, layout: SliceLayout, mapper: ColorMapp
 }
 
 // 2 channels are gray + alpha, 3 are RGB and 4 are RGBA.
-function renderColor(data: NumericArray, layout: SliceLayout, ranges: DisplayRanges): Uint8ClampedArray {
+function renderColor(data: ChunkedArray, layout: SliceLayout, ranges: DisplayRanges): Uint8ClampedArray {
     const { height, width, base, stepY, stepX, channels, stepC } = layout;
     const { color, alpha } = ranges;
     const colorCount = alpha ? channels - 1 : channels;
@@ -236,11 +241,11 @@ function renderColor(data: NumericArray, layout: SliceLayout, ranges: DisplayRan
     for (let y = 0; y < height; y++) {
         let index = base + y * stepY;
         for (let x = 0; x < width; x++) {
-            const r = ((data[index] - color.min) / color.range) * 255;
+            const r = ((data.at(index) - color.min) / color.range) * 255;
             pixels[ptr++] = r;
-            pixels[ptr++] = colorCount === 3 ? ((data[index + stepC] - color.min) / color.range) * 255 : r;
-            pixels[ptr++] = colorCount === 3 ? ((data[index + 2 * stepC] - color.min) / color.range) * 255 : r;
-            pixels[ptr++] = alpha ? ((data[index + colorCount * stepC] - alpha.min) / alpha.range) * 255 : 255;
+            pixels[ptr++] = colorCount === 3 ? ((data.at(index + stepC) - color.min) / color.range) * 255 : r;
+            pixels[ptr++] = colorCount === 3 ? ((data.at(index + 2 * stepC) - color.min) / color.range) * 255 : r;
+            pixels[ptr++] = alpha ? ((data.at(index + colorCount * stepC) - alpha.min) / alpha.range) * 255 : 255;
             index += stepX;
         }
     }
@@ -272,7 +277,8 @@ export function pixelCoords(axes: Axis[], layout: SliceLayout, y: number, x: num
     });
 }
 
-export function readPixel(data: NumericArray, layout: SliceLayout, y: number, x: number): number[] {
+export function readPixel(data: ArrayData, layout: SliceLayout, y: number, x: number): number[] {
+    const source = asChunked(data);
     const index = layout.base + y * layout.stepY + x * layout.stepX;
-    return Array.from({ length: layout.channels }, (_, channel) => data[index + channel * layout.stepC]);
+    return Array.from({ length: layout.channels }, (_, channel) => source.at(index + channel * layout.stepC));
 }

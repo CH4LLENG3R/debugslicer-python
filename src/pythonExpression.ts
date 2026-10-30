@@ -1,5 +1,5 @@
 // Debugger type names we can view. Keep in sync with the `when` clause in package.json.
-export const SUPPORTED_TYPE_PATTERN = /^(ndarray|Tensor|Parameter|Image|.*ImageFile)$/;
+export const SUPPORTED_TYPE_PATTERN = /^(ndarray|Tensor|Parameter|MetaTensor|Image|.*ImageFile)$/;
 
 export interface SavedTypes {
     original: string;

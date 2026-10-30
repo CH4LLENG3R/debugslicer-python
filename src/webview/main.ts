@@ -12,6 +12,9 @@ import {
 } from './slice';
 import { createView } from './view';
 
+// Smaller arrays load so quickly that a progress bar would only flicker.
+const PROGRESS_MIN_BYTES = 32 * 2 ** 20;
+
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 
 const vscode = acquireVsCodeApi();
@@ -32,12 +35,16 @@ const statusValue = document.getElementById('status-value')!;
 const statusSwatch = document.getElementById('status-swatch')!;
 const swatchColor = document.getElementById('swatch-color')!;
 const toast = document.getElementById('toast')!;
+const progressRow = document.getElementById('load-progress')!;
+const progressBar = document.getElementById('load-progress-bar') as HTMLProgressElement;
+const progressLabel = document.getElementById('load-progress-label')!;
 
 let array: NpyArray | undefined;
 let axes: Axis[] = [];
 let layouts: (SliceLayout | undefined)[] = [];
 let lastShape: number[] = [];
 let latestLoad = 0;
+let activeLoad: AbortController | undefined;
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 // Changes with every load, so that views redraw even if the new data has the same layout.
 let generation = 0;
@@ -141,10 +148,36 @@ async function load(uri: string, warning?: string) {
     mapper = undefined;
     showWarning(warning);
 
-    const result = await loadNpy(uri);
+    activeLoad?.abort();
+    activeLoad = new AbortController();
+    let shownPercent = -1;
+    const result = await loadNpy(uri, {
+        signal: activeLoad.signal,
+        onHeader: header => {
+            shapeDisplay.textContent = describeArray(header.shape, header.dtype);
+        },
+        onProgress: (loaded, total) => {
+            // Data arrives in many small pieces, and the page only needs to change once per percent.
+            const percent = Math.floor((loaded / total) * 100);
+            if (total >= PROGRESS_MIN_BYTES && percent !== shownPercent) {
+                shownPercent = percent;
+                showProgress(`Loading ${formatBytes(loaded)} of ${formatBytes(total)}`, loaded / total);
+            }
+        },
+    });
     if (thisLoad !== latestLoad) {
         return;
     }
+
+    if (result.kind === 'ok' && shownPercent >= 0) {
+        // The first draw scans the whole array, so let this appear before the page is busy with that.
+        showProgress('Preparing the views');
+        await new Promise(resolve => setTimeout(resolve, 30));
+        if (thisLoad !== latestLoad) {
+            return;
+        }
+    }
+    progressRow.hidden = true;
 
     if (result.kind === 'tooLarge') {
         shapeDisplay.textContent = 'Array too large to load, trying a smaller type...';
@@ -159,7 +192,7 @@ async function load(uri: string, warning?: string) {
 function showArray(loaded: NpyArray) {
     array = loaded;
     generation++;
-    shapeDisplay.textContent = `Shape [${loaded.shape.join(', ')}] · ${dtypeName(loaded.dtype)}`;
+    shapeDisplay.textContent = describeArray(loaded.shape, loaded.dtype);
 
     // Reopening a variable with the same shape keeps the axis roles and view position.
     const sameShape = loaded.shape.join() === lastShape.join() && axes.length > 0;
@@ -169,6 +202,25 @@ function showArray(loaded: NpyArray) {
         axesPanel.render(loaded.shape, axes);
     }
     redraw(!sameShape);
+}
+
+function describeArray(shape: number[], dtype: string): string {
+    return `Shape [${shape.join(', ')}] · ${dtypeName(dtype)}`;
+}
+
+// Without a fraction, the bar shows that something is happening without saying how much is left.
+function showProgress(label: string, fraction?: number) {
+    progressRow.hidden = false;
+    progressLabel.textContent = label;
+    if (fraction === undefined) {
+        progressBar.removeAttribute('value');
+    } else {
+        progressBar.value = fraction;
+    }
+}
+
+function formatBytes(bytes: number): string {
+    return bytes >= 2 ** 30 ? `${(bytes / 2 ** 30).toFixed(1)} GB` : `${Math.round(bytes / 2 ** 20)} MB`;
 }
 
 function showWarning(warning?: string) {
