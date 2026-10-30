@@ -9,6 +9,7 @@ esbuild.js
 vsc-extension-quickstart.md
 test_project/**
 docs/**
+!docs/images/**
 CLAUDE.md
 **/tsconfig.json
 **/eslint.config.mjs

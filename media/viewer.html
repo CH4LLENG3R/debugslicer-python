@@ -21,6 +21,11 @@
     </section>
 
     <div class="toolbar">
+        <div id="colormap-field" class="field" hidden>
+            <label for="colormap-select">Colormap</label>
+            <select id="colormap-select" class="select"></select>
+            <button id="colormap-edit" class="text-btn" title="Create a colormap from this one, or change a saved one">Edit...</button>
+        </div>
         <label class="field">
             <span>Interpolation</span>
             <select id="interpolation-select" class="select">
@@ -39,8 +44,31 @@
             <input type="checkbox" id="crosshair-toggle" checked>
             <span>Crosshair</span>
         </label>
-        <span class="toolbar-hint">Ctrl + drag to pan, Ctrl + scroll to zoom</span>
     </div>
+
+    <section id="colormap-editor" class="colormap-editor" aria-label="Colormap editor" hidden>
+        <div class="toolbar">
+            <label class="field">
+                <span>Name</span>
+                <input type="text" id="colormap-name" class="input" maxlength="40">
+            </label>
+            <label class="field">
+                <span>Type</span>
+                <select id="colormap-kind" class="select">
+                    <option value="continuous">Continuous</option>
+                    <option value="step">Step</option>
+                </select>
+            </label>
+        </div>
+        <div id="colormap-preview" class="colormap-preview"></div>
+        <div id="colormap-colors" class="colormap-colors"></div>
+        <div class="toolbar">
+            <button id="colormap-add" class="text-btn">Add colour</button>
+            <button id="colormap-save" class="text-btn primary">Save</button>
+            <button id="colormap-delete" class="text-btn">Delete</button>
+            <button id="colormap-cancel" class="text-btn">Cancel</button>
+        </div>
+    </section>
 
     <!-- One view per plane is added here. Only the first is shown for 2D images -->
     <main id="views" class="views"></main>
@@ -51,6 +79,7 @@
         <span class="status-label">Val</span>
         <span id="status-value">--</span>
         <span id="status-swatch" class="swatch" title="Displayed colour" hidden><span id="swatch-color"></span></span>
+        <span class="status-hint">Hold <kbd>Ctrl</kbd>: drag to pan, scroll to zoom</span>
     </footer>
 
     <div id="toast" class="toast" role="status" hidden></div>

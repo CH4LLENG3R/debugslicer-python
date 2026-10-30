@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-DebugSlicer is a VS Code extension for debugging processing steps by viewing the image data held in variables during a Python debug session: RGB, ARGB and mono 2D images, plus voxel volumes. It is a general debugging utility, not a medical tool, so physical spacing and other scan metadata are out of scope. Opening the viewer must stay fast, so expensive features are opt-in. It is currently a proof of concept. `README.md` and `vsc-extension-quickstart.md` are unedited scaffold text.
+DebugSlicer is a VS Code extension for debugging processing steps by viewing the image data held in variables during a Python debug session: RGB, ARGB and mono 2D images, plus voxel volumes. It is a general debugging utility, not a medical tool, so physical spacing and other scan metadata are out of scope. Opening the viewer must stay fast, so expensive features are opt-in. `README.md` is the user guide, so update it and its screenshots in `docs/images/` when behaviour changes. `vsc-extension-quickstart.md` is unedited scaffold text.
 
 Planned features and sprint order are in `docs/ROADMAP.md`.
 
@@ -46,6 +46,8 @@ Data moves through three stages, using a `.npy` file in the temp directory as th
 Each dimension has a role: `H`, `W`, `D` (slice axis), `c` (colour channel) or `const` (held at an index). `H`, `W`, `D` and `c` belong to one dimension at most, so choosing a taken role swaps roles. Colour (2 to 4 channels: gray+alpha, RGB, RGBA) only applies to 2D images, so `c` acts as a constant while `D` is assigned. Dimensions of size 1 start as `const`.
 
 With `H`, `W` and `D` all assigned, three views (`PLANES` in `slice.ts`) show the array, otherwise one does. A dimension's `index` is the shared position: a view shows two axes across its image and holds the others at their index, so moving one view's position re-slices the other views. Display ranges are computed once per load over the whole array and cached per channel arrangement, so every slice and view agree.
+
+Without colour channels, `colormap.ts` turns values into packed pixels through a `ColorMapper`. Step maps colour each distinct label when the data has them (`findLabels`), which is also scanned once per load. `colormapEditor.ts` is the form for custom maps. Saved colormaps and the caption setting are `Preferences`: the webview posts `savePreferences`, and `viewer.ts` stores them in `globalState` and passes them to the other open tabs. `colormap.ts` has no `vscode` or DOM dependency, which is why the extension host can import it to sanitise what it stores.
 
 If the webview runs out of memory, it posts `loadTooLarge`. The panel then has the debuggee re-save the variable at a smaller type and reloads it with a warning, once only.
 

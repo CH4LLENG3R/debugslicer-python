@@ -6,6 +6,7 @@ export interface ViewEvents {
     onHover(y: number, x: number): void;
     onLeave(): void;
     onPick(y: number, x: number): void;
+    onPlainWheel(): void;
     onSlice(index: number): void;
     onScreenshot(): void;
 }

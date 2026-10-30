@@ -2,6 +2,10 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { SavedTypes } from './pythonExpression';
+import { sanitizePreferences } from './webview/colormap';
+
+// Where saved colormaps and other settings are kept, shared across all workspaces.
+const PREFERENCES_KEY = 'debugslicer.preferences';
 
 export interface ViewedVariable {
     // Stays the same across debug runs, so reopening a variable finds its tab.
@@ -16,6 +20,7 @@ export class DebugSlicerPanel {
     private static readonly _panels = new Map<string, DebugSlicerPanel>();
     private readonly _panel: vscode.WebviewPanel;
     private readonly _extensionUri: vscode.Uri;
+    private readonly _storage: vscode.Memento;
     private _variable: ViewedVariable;
     private _disposables: vscode.Disposable[] = [];
     private _isReady = false;
@@ -23,7 +28,7 @@ export class DebugSlicerPanel {
     private _version = 0;
     private _isReduced = false;
 
-    public static createOrShow(extensionUri: vscode.Uri, variable: ViewedVariable) {
+    public static createOrShow(extensionUri: vscode.Uri, storage: vscode.Memento, variable: ViewedVariable) {
         const existing = DebugSlicerPanel._panels.get(variable.key);
         if (existing) {
             existing._variable = variable;
@@ -50,14 +55,15 @@ export class DebugSlicerPanel {
             }
         );
 
-        const instance = new DebugSlicerPanel(panel, extensionUri, variable);
+        const instance = new DebugSlicerPanel(panel, extensionUri, storage, variable);
         DebugSlicerPanel._panels.set(variable.key, instance);
         instance.loadNpy();
     }
 
-    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, variable: ViewedVariable) {
+    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, storage: vscode.Memento, variable: ViewedVariable) {
         this._panel = panel;
         this._extensionUri = extensionUri;
+        this._storage = storage;
         this._variable = variable;
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
         this._panel.webview.onDidReceiveMessage(message => this._onMessage(message), null, this._disposables);
@@ -96,9 +102,21 @@ export class DebugSlicerPanel {
         }
     }
 
-    private async _onMessage(message: { command: string; error?: string }) {
-        if (message.command === 'ready') {
+    private async _onMessage(message: { command: string; error?: string; preferences?: unknown }) {
+        if (message.command === 'savePreferences') {
+            const preferences = sanitizePreferences(message.preferences);
+            await this._storage.update(PREFERENCES_KEY, preferences);
+            DebugSlicerPanel._panels.forEach(panel => {
+                if (panel !== this && panel._isReady) {
+                    panel._panel.webview.postMessage({ command: 'preferences', preferences });
+                }
+            });
+        } else if (message.command === 'ready') {
             this._isReady = true;
+            this._panel.webview.postMessage({
+                command: 'preferences',
+                preferences: sanitizePreferences(this._storage.get(PREFERENCES_KEY)),
+            });
             if (this._pendingMessage) {
                 this._panel.webview.postMessage(this._pendingMessage);
                 this._pendingMessage = undefined;

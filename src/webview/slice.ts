@@ -1,3 +1,4 @@
+import { buildMapper, ColorMapper, GRAY, unpackColor } from './colormap';
 import { NumericArray } from './npy';
 
 export type AxisRole = 'H' | 'W' | 'D' | 'c' | 'const';
@@ -201,22 +202,23 @@ function colorRange(min: number, max: number): ValueRange {
     return min >= 0 && max <= 1 ? { min: 0, range: 1 } : stretchRange(min, max);
 }
 
-export function renderSlice(data: NumericArray, layout: SliceLayout, ranges: DisplayRanges): Uint8ClampedArray {
-    return layout.channels > 1 ? renderColor(data, layout, ranges) : renderGray(data, layout, ranges.color);
+// Without colour channels, the mapper decides each pixel's colour. It defaults to gray.
+export function renderSlice(data: NumericArray, layout: SliceLayout, ranges: DisplayRanges, mapper?: ColorMapper): Uint8ClampedArray {
+    if (layout.channels > 1) {
+        return renderColor(data, layout, ranges);
+    }
+    return renderMapped(data, layout, mapper ?? buildMapper(GRAY, ranges.color.min, ranges.color.range));
 }
 
-function renderGray(data: NumericArray, layout: SliceLayout, gray: ValueRange): Uint8ClampedArray {
+function renderMapped(data: NumericArray, layout: SliceLayout, mapper: ColorMapper): Uint8ClampedArray {
     const { height, width, base, stepY, stepX } = layout;
     const pixels = new Uint8ClampedArray(height * width * 4);
+    const packed = new Uint32Array(pixels.buffer);
     let ptr = 0;
     for (let y = 0; y < height; y++) {
         let index = base + y * stepY;
         for (let x = 0; x < width; x++) {
-            const norm = ((data[index] - gray.min) / gray.range) * 255;
-            pixels[ptr++] = norm;
-            pixels[ptr++] = norm;
-            pixels[ptr++] = norm;
-            pixels[ptr++] = 255;
+            packed[ptr++] = mapper(data[index]);
             index += stepX;
         }
     }
@@ -246,8 +248,11 @@ function renderColor(data: NumericArray, layout: SliceLayout, ranges: DisplayRan
 }
 
 // The colour a pixel with these channel values is drawn in.
-export function pixelColor(values: number[], ranges: DisplayRanges): Rgba {
+export function pixelColor(values: number[], ranges: DisplayRanges, mapper?: ColorMapper): Rgba {
     const { color, alpha } = ranges;
+    if (values.length === 1) {
+        return unpackColor((mapper ?? buildMapper(GRAY, color.min, color.range))(values[0]));
+    }
     const colorCount = alpha ? values.length - 1 : values.length;
     const shade = (i: number) => toByte(values[i], color);
     const opacity = alpha ? toByte(values[colorCount], alpha) : 255;

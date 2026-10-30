@@ -43,7 +43,7 @@ export function activate(context: vscode.ExtensionContext) {
             await saveVariable(session, varName, npyPath, frame.frameId, false);
 
             if (fs.existsSync(npyPath)) {
-                DebugSlicerPanel.createOrShow(context.extensionUri, {
+                DebugSlicerPanel.createOrShow(context.extensionUri, context.globalState, {
                     key,
                     name: varName,
                     npyPath,

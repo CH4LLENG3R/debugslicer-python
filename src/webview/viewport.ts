@@ -3,6 +3,8 @@ export interface ViewportEvents {
     onLeave(): void;
     // The mouse chose a pixel by pressing or dragging. Always within the image.
     onPick(canvasY: number, canvasX: number): void;
+    // The wheel turned over the view without Ctrl held, so it did nothing.
+    onPlainWheel(): void;
 }
 
 export interface ViewportElements {
@@ -111,6 +113,7 @@ export function setupViewport(elements: ViewportElements, events: ViewportEvents
     // Mouse Wheel Zoom (requires Ctrl / Cmd)
     container.addEventListener('wheel', (e) => {
         if (!e.ctrlKey && !e.metaKey) {
+            events.onPlainWheel();
             return;
         }
         e.preventDefault();

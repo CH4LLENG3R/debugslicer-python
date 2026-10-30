@@ -260,7 +260,7 @@ test('reports the colour a pixel is drawn in', () => {
     assert.deepStrictEqual(pixelColor([100, 50], bytes), [100, 100, 100, 50]);
     assert.deepStrictEqual(pixelColor([10, 20, 30, 40], bytes), [10, 20, 30, 40]);
     assert.deepStrictEqual(pixelColor([10, 20, 30], { color: bytes.color }), [10, 20, 30, 255]);
-    assert.deepStrictEqual(pixelColor([NaN], GRAY_0_TO_10), [0, 0, 0, 255]);
+    assert.deepStrictEqual(pixelColor([NaN], GRAY_0_TO_10), [255, 0, 255, 255]);
 });
 
 test('reads every channel of a pixel and marks the colour dimension in its position', () => {

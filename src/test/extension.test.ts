@@ -7,6 +7,12 @@ import { DebugSlicerPanel, ViewedVariable } from '../viewer';
 
 const extensionUri = vscode.Uri.file(path.join(__dirname, '../..'));
 
+const storage: vscode.Memento = {
+    keys: () => [],
+    get: <T>(_key: string, defaultValue?: T) => defaultValue as T,
+    update: async () => undefined,
+};
+
 function openTabLabels(): string[] {
     return vscode.window.tabGroups.all
         .flatMap(group => group.tabs)
@@ -46,28 +52,28 @@ suite('DebugSlicer tabs', () => {
     });
 
     test('opens a tab named after each variable', async () => {
-        DebugSlicerPanel.createOrShow(extensionUri, variable('a', 'image'));
-        DebugSlicerPanel.createOrShow(extensionUri, variable('b', 'mask'));
+        DebugSlicerPanel.createOrShow(extensionUri, storage, variable('a', 'image'));
+        DebugSlicerPanel.createOrShow(extensionUri, storage, variable('b', 'mask'));
         assert.deepStrictEqual((await waitForTabs(2)).sort(), ['image - DebugSlicer', 'mask - DebugSlicer']);
     });
 
     test('reuses the tab when the same variable is reopened', async () => {
-        DebugSlicerPanel.createOrShow(extensionUri, variable('a', 'image'));
+        DebugSlicerPanel.createOrShow(extensionUri, storage, variable('a', 'image'));
         await waitForTabs(1);
-        DebugSlicerPanel.createOrShow(extensionUri, variable('a', 'image'));
+        DebugSlicerPanel.createOrShow(extensionUri, storage, variable('a', 'image'));
         await new Promise(resolve => setTimeout(resolve, 300));
         assert.deepStrictEqual(openTabLabels(), ['image - DebugSlicer']);
     });
 
     test('keeps same-named variables from different frames apart', async () => {
-        DebugSlicerPanel.createOrShow(extensionUri, variable('f-x', 'x'));
-        DebugSlicerPanel.createOrShow(extensionUri, variable('g-x', 'x'));
+        DebugSlicerPanel.createOrShow(extensionUri, storage, variable('f-x', 'x'));
+        DebugSlicerPanel.createOrShow(extensionUri, storage, variable('g-x', 'x'));
         assert.strictEqual((await waitForTabs(2)).length, 2);
     });
 
     test('deletes the temp file when the tab closes', async () => {
         const viewed = variable('a', 'image');
-        DebugSlicerPanel.createOrShow(extensionUri, viewed);
+        DebugSlicerPanel.createOrShow(extensionUri, storage, viewed);
         await vscode.commands.executeCommand('workbench.action.closeAllEditors');
         assert.ok(!fs.existsSync(viewed.npyPath));
     });
