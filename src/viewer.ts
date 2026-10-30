@@ -1,81 +1,145 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import * as path from 'path'; // Add this import
+import * as path from 'path';
+import { SavedTypes } from './pythonExpression';
+
+export interface ViewedVariable {
+    // Stays the same across debug runs, so reopening a variable finds its tab.
+    key: string;
+    name: string;
+    npyPath: string;
+    // Saves the variable again at a smaller type. Used when the webview runs out of memory.
+    saveReduced: () => Promise<SavedTypes>;
+}
 
 export class DebugSlicerPanel {
-    public static currentPanel: DebugSlicerPanel | undefined;
+    private static readonly _panels = new Map<string, DebugSlicerPanel>();
     private readonly _panel: vscode.WebviewPanel;
     private readonly _extensionUri: vscode.Uri;
+    private _variable: ViewedVariable;
     private _disposables: vscode.Disposable[] = [];
+    private _isReady = false;
+    private _pendingMessage: unknown;
+    private _version = 0;
+    private _isReduced = false;
 
-    public static createOrShow(extensionUri: vscode.Uri, npyPath: string) {
-        const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined;
-
-        if (DebugSlicerPanel.currentPanel) {
-            DebugSlicerPanel.currentPanel._panel.reveal(column);
-            DebugSlicerPanel.currentPanel.loadNpy(npyPath);
+    public static createOrShow(extensionUri: vscode.Uri, variable: ViewedVariable) {
+        const existing = DebugSlicerPanel._panels.get(variable.key);
+        if (existing) {
+            existing._variable = variable;
+            existing._panel.reveal();
+            existing.loadNpy();
             return;
         }
 
-        // Extract the directory where the NPY file is saved (temp dir)
-        const npyDir = vscode.Uri.file(path.dirname(npyPath));
-
+        const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined;
         const panel = vscode.window.createWebviewPanel(
             'debugSlicerViewer',
-            'DebugSlicer View',
+            `${variable.name} - DebugSlicer`,
             column || vscode.ViewColumn.One,
-            { 
+            {
                 enableScripts: true,
-                // Allow webview to load resources from both the media folder AND the temp folder
+                // Webviews are destroyed when hidden unless retained, and reloading an array is slower than keeping it.
+                retainContextWhenHidden: true,
+                // Allow webview to load resources from the media and bundle folders AND the temp folder
                 localResourceRoots: [
                     vscode.Uri.joinPath(extensionUri, 'media'),
-                    npyDir 
+                    vscode.Uri.joinPath(extensionUri, 'dist'),
+                    vscode.Uri.file(path.dirname(variable.npyPath))
                 ]
             }
         );
 
-        DebugSlicerPanel.currentPanel = new DebugSlicerPanel(panel, extensionUri);
-        DebugSlicerPanel.currentPanel.loadNpy(npyPath);
+        const instance = new DebugSlicerPanel(panel, extensionUri, variable);
+        DebugSlicerPanel._panels.set(variable.key, instance);
+        instance.loadNpy();
     }
 
-    // ... (Keep constructor and dispose methods exactly the same) ...
-    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
+    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, variable: ViewedVariable) {
         this._panel = panel;
         this._extensionUri = extensionUri;
+        this._variable = variable;
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+        this._panel.webview.onDidReceiveMessage(message => this._onMessage(message), null, this._disposables);
         this._panel.webview.html = this._getHtmlForWebview(this._panel.webview);
     }
 
     public dispose() {
-        DebugSlicerPanel.currentPanel = undefined;
+        DebugSlicerPanel._panels.delete(this._variable.key);
+        fs.rmSync(this._variable.npyPath, { force: true });
         this._panel.dispose();
         while (this._disposables.length) {
             const x = this._disposables.pop();
-            if (x) x.dispose();
+            if (x) {
+                x.dispose();
+            }
         }
     }
 
-    public loadNpy(npyPath: string) {
-        if (fs.existsSync(npyPath)) {
-            // Convert the local file path into a secure webview URI
-            const fileUri = vscode.Uri.file(npyPath);
+    public loadNpy(warning?: string) {
+        this._isReduced = warning !== undefined;
+        if (fs.existsSync(this._variable.npyPath)) {
+            // The file name is reused on every save, so the version stops the webview getting a cached copy.
+            const fileUri = vscode.Uri.file(this._variable.npyPath).with({ query: `v=${++this._version}` });
             const webviewUri = this._panel.webview.asWebviewUri(fileUri);
 
             // Send ONLY the URI string to the webview
-            this._panel.webview.postMessage({
-                command: 'loadNpy',
-                uri: webviewUri.toString() 
-            });
+            this._postMessage({ command: 'loadNpy', uri: webviewUri.toString(), warning });
         }
     }
 
-    // ... (Keep _getHtmlForWebview exactly the same) ...
+    private _postMessage(message: unknown) {
+        if (this._isReady) {
+            this._panel.webview.postMessage(message);
+        } else {
+            this._pendingMessage = message;
+        }
+    }
+
+    private async _onMessage(message: { command: string; error?: string }) {
+        if (message.command === 'ready') {
+            this._isReady = true;
+            if (this._pendingMessage) {
+                this._panel.webview.postMessage(this._pendingMessage);
+                this._pendingMessage = undefined;
+            }
+        } else if (message.command === 'loadTooLarge') {
+            await this._retryWithSmallerType(message.error ?? 'out of memory');
+        }
+    }
+
+    private async _retryWithSmallerType(error: string) {
+        const giveUp = (reason: string) => this._postMessage({
+            command: 'showError',
+            message: `Array too large to load (${error}). ${reason}`
+        });
+
+        if (this._isReduced) {
+            giveUp('It is already at a smaller type.');
+            return;
+        }
+
+        try {
+            const { original, saved } = await this._variable.saveReduced();
+            if (original === saved) {
+                giveUp(`Its type ${original} can't be reduced further.`);
+                return;
+            }
+            this.loadNpy(`Too large to load as ${original}, so it is shown as ${saved}. Values may have lost precision.`);
+        } catch (e) {
+            giveUp(`Saving it at a smaller type failed: ${e}`);
+        }
+    }
+
     private _getHtmlForWebview(webview: vscode.Webview) {
         const htmlPath = vscode.Uri.joinPath(this._extensionUri, 'media', 'viewer.html');
-        const scriptPath = vscode.Uri.joinPath(this._extensionUri, 'media', 'viewer.js');
+        const scriptPath = vscode.Uri.joinPath(this._extensionUri, 'dist', 'viewer.js');
         let html = fs.readFileSync(htmlPath.fsPath, 'utf8');
+        const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'viewer.css'));
         const scriptUri = webview.asWebviewUri(scriptPath);
         const nonce = getNonce();
+        html = html.replace('{{styleUri}}', styleUri.toString());
+        html = html.replace('{{cspSource}}', webview.cspSource);
         html = html.replace('{{scriptUri}}', scriptUri.toString());
         html = html.replace(/{{nonce}}/g, nonce);
         return html;

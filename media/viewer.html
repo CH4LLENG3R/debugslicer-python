@@ -2,111 +2,90 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- Secure CSP required by VS Code Webviews -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src vscode-webview-resource: https:; style-src 'unsafe-inline'; script-src 'nonce-{{nonce}}';">
-    <style>
-        body { padding: 20px; font-family: var(--vscode-font-family); color: var(--vscode-foreground); }
-        .dim-select { margin-right: 10px; padding: 5px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); }
-        #slider-container { margin-top: 20px; display: none; }
-        
-        #canvas-container {
-            overflow: hidden;
-            border: 1px solid var(--vscode-panel-border);
-            border-top: none;
-            background: #000;
-            width: 100%;
-            height: 70vh; 
-            touch-action: none;
-        }
-        
-        #toolbar {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-top: 15px;
-            padding: 6px 10px;
-            background: var(--vscode-editor-background);
-            border: 1px solid var(--vscode-panel-border);
-            border-radius: 4px 4px 0px 0px;
-        }
-        .toolbar-btn {
-            background: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-            border: none;
-            padding: 4px 10px;
-            font-size: 13px;
-            border-radius: 2px;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .toolbar-btn:hover {
-            background: var(--vscode-button-hoverBackground);
-        }
-
-        /* Monospace cursor info badge on the left */
-        #cursor-info {
-            font-family: var(--vscode-editor-font-family, monospace);
-            font-size: 12px;
-            padding: 2px 8px;
-            background: var(--vscode-badge-background);
-            color: var(--vscode-badge-foreground);
-            border-radius: 3px;
-            white-space: nowrap;
-        }
-
-        .toolbar-label {
-            margin-left: auto;
-            font-size: 12px;
-            opacity: 0.8;
-        }
-
-        #render-canvas {
-            transform-origin: 0 0;
-            cursor: grab;
-            /* Default interpolation: Nearest neighbor */
-            image-rendering: pixelated;
-        }
-        #render-canvas:active {
-            cursor: grabbing;
-        }
-    </style>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src vscode-webview-resource: https:; style-src {{cspSource}}; script-src 'nonce-{{nonce}}';">
+    <link rel="stylesheet" href="{{styleUri}}">
+    <title>DebugSlicer</title>
 </head>
 <body>
-    <h2 id="shape-display">Loading array...</h2>
-    <div id="controls"></div>
+    <header class="header">
+        <h1 id="shape-display">Loading array...</h1>
+    </header>
+    <div id="warning" class="notice" role="status" hidden></div>
 
-    <div class="views">
-        <div class="view">
-            <div id="slider-container">
-                <label id="depth-label">Depth: 0</label><br/>
-                <input type="range" id="depth-slider" min="0" max="10" value="0" style="width: 300px;">
-            </div>
+    <!-- One column per dimension is added here: its size, its role and the index it is held at -->
+    <section class="dims" aria-label="Dimensions">
+        <div id="dim-table" class="dim-table"></div>
+        <p id="hint" class="hint" hidden></p>
+    </section>
 
-            <!-- Toolbar Bar -->
-            <div id="toolbar">
-                <button id="btn-zoom-in" class="toolbar-btn" title="Zoom In">+</button>
-                <button id="btn-zoom-out" class="toolbar-btn" title="Zoom Out">-</button>
-                <button id="btn-reset" class="toolbar-btn" title="Reset View">↺</button>
-
-                <!-- Cursor position & intensity readout -->
-                <span id="cursor-info">Pos: -- | Val: --</span>
-                
-                <span class="toolbar-label">Interpolation:</span>
-                <select id="interpolation-select" class="dim-select">
-                    <option value="pixelated" selected>Nearest</option>
-                    <option value="auto">Bilinear</option>
-                </select>
-            </div>
-
-            <div id="canvas-container">
-                <canvas id="render-canvas"></canvas>
-            </div>
-        </div>
+    <div class="toolbar">
+        <label class="field">
+            <span>Interpolation</span>
+            <select id="interpolation-select" class="select">
+                <option value="nearest" selected>Nearest</option>
+                <option value="bilinear">Bilinear</option>
+            </select>
+        </label>
+        <label id="caption-field" class="field" hidden>
+            <span>Captions</span>
+            <select id="caption-select" class="select">
+                <option value="names" selected>Axial, Sagittal, Coronal</option>
+                <option value="planes">H×W, D×H, D×W</option>
+            </select>
+        </label>
+        <label id="crosshair-field" class="field" hidden>
+            <input type="checkbox" id="crosshair-toggle" checked>
+            <span>Crosshair</span>
+        </label>
+        <span class="toolbar-hint">Ctrl + drag to pan, Ctrl + scroll to zoom</span>
     </div>
 
-    <!-- Dynamic script injection via TypeScript -->
+    <!-- One view per plane is added here. Only the first is shown for 2D images -->
+    <main id="views" class="views"></main>
+
+    <footer class="status-bar mono">
+        <span class="status-label">Pos</span>
+        <span id="status-position">--</span>
+        <span class="status-label">Val</span>
+        <span id="status-value">--</span>
+        <span id="status-swatch" class="swatch" title="Displayed colour" hidden><span id="swatch-color"></span></span>
+    </footer>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+
+    <template id="view-template">
+        <section class="view">
+            <div class="view-header">
+                <span class="view-caption"></span>
+                <div class="view-slice">
+                    <input type="range" class="view-slider" min="0" max="0" value="0" aria-label="Slice">
+                    <span class="view-slice-label mono"></span>
+                </div>
+                <div class="btn-group">
+                    <button class="icon-btn btn-zoom-in" title="Zoom in" aria-label="Zoom in">
+                        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8 3v10"/></svg>
+                    </button>
+                    <button class="icon-btn btn-zoom-out" title="Zoom out" aria-label="Zoom out">
+                        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg>
+                    </button>
+                    <button class="icon-btn btn-fit" title="Fit to window" aria-label="Fit to window">
+                        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg>
+                    </button>
+                    <button class="icon-btn btn-screenshot" title="Copy screenshot to clipboard" aria-label="Copy screenshot to clipboard">
+                        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5h3l1-2h4l1 2h3v8H2z"/><circle cx="8" cy="9" r="2.25"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="canvas-container">
+                <canvas class="view-canvas"></canvas>
+                <div class="crosshair crosshair-h" hidden></div>
+                <div class="crosshair crosshair-v" hidden></div>
+            </div>
+        </section>
+    </template>
+
     <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
 </body>
 </html>
